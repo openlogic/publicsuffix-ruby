@@ -1,6 +1,43 @@
 # Changelog
 
 
+#### master
+
+- NEW: Added PublicSuffix.domain # => sld.tld
+
+- NEW: Added the ability to disable the use of private domains either at runtime, in addition to the ability to not load the private domains section when reading the list (`private_domains: false`). This feature also superseded the `private_domains` class-level attribute, that is no longer available.
+
+- CHANGED: Considerable performance improvements (GH-92)
+
+- CHANGED: Updated definitions.
+
+- CHANGED: Removed deprecated PublicSuffix::InvalidDomain exception
+
+- CHANGED: If the suffix is now listed, then the prevaling rule is "*" as defined by the PSL algorithm (GH-91)
+
+- CHANGED: Input validation is performed only if you call `PublicSuffix.parse` or `PublicSuffix.list`
+
+- CHANGED: Input with leading dot is invalid per PSL acceptance tests
+
+- CHANGED: Removed `private_domains` class-level attribute. It is replaced by the `private_domains: false` option in the list parse method.
+
+- CHANGED: The default list now assumes you use UTF-8 for reading the input (GH-94),
+
+- REMOVED: Removed futile utility helpers such as `Domain#rule`, `Domain#is_a_domain?`, `Domain#is_a_subdomain?`, `Domain#valid?`. You can easily obtain the same result by having a custom method that reconstructs the logic, and/or calling `PublicSuffix.{domain|parse}(domain.to_s)`.
+
+
+#### Release 1.5.3
+
+- FIXED: Don't duplicate rule indices when creating index (GH-77). [Thanks @ags]
+
+- CHANGED: Updated definitions.
+
+
+#### Release 1.5.2
+
+- CHANGED: Updated definitions.
+
+
 #### Release 1.5.1
 
 - FIXED: Ignore case for parsing and validating (GH-62)
