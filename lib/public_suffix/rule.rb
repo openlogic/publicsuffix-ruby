@@ -1,17 +1,15 @@
-#
-# Public Suffix
+# = Public Suffix
 #
 # Domain name parser based on the Public Suffix List.
 #
-# Copyright (c) 2009-2015 Simone Carletti <weppos@weppos.net>
-#
+# Copyright (c) 2009-2016 Simone Carletti <weppos@weppos.net>
 
 module PublicSuffix
 
   # A Rule is a special object which holds a single definition
   # of the Public Suffix List.
   #
-  # There are 3 types of ruleas, each one represented by a specific
+  # There are 3 types of rules, each one represented by a specific
   # subclass within the +PublicSuffix::Rule+ namespace.
   #
   # To create a new Rule, use the {PublicSuffix::Rule#factory} method.
@@ -21,12 +19,11 @@ module PublicSuffix
   #
   module Rule
 
-    #
     # = Abstract rule class
     #
     # This represent the base class for a Rule definition
-    # in the {Public Suffix List}[http://publicsuffix.org].
-    # 
+    # in the {Public Suffix List}[https://publicsuffix.org].
+    #
     # This is intended to be an Abstract class
     # and you shouldn't create a direct instance. The only purpose
     # of this class is to expose a common interface
@@ -36,28 +33,21 @@ module PublicSuffix
     # * {PublicSuffix::Rule::Exception}
     # * {PublicSuffix::Rule::Wildcard}
     #
-    # == Properties
+    # ## Properties
     #
     # A rule is composed by 4 properties:
     #
-    # name    - The name of the rule, corresponding to the rule definition
-    #           in the public suffix list
-    # value   - The value, a normalized version of the rule name.
+    # value   - A normalized version of the rule name.
     #           The normalization process depends on rule tpe.
-    # type    - The rule type (:normal, :wildcard, :exception)
-    # labels  - The canonicalized rule name
     #
     # Here's an example
     #
     #   PublicSuffix::Rule.factory("*.google.com")
     #   #<PublicSuffix::Rule::Wildcard:0x1015c14b0
-    #       @labels=["com", "google"],
-    #       @name="*.google.com",
-    #       @type=:wildcard,
     #       @value="google.com"
     #   >
     #
-    # == Rule Creation
+    # ## Rule Creation
     #
     # The best way to create a new rule is passing the rule name
     # to the <tt>PublicSuffix::Rule.factory</tt> method.
@@ -71,35 +61,34 @@ module PublicSuffix
     # This method will detect the rule type and create an instance
     # from the proper rule class.
     #
-    # == Rule Usage
+    # ## Rule Usage
     #
-    # A rule describes the composition of a domain name
-    # and explains how to tokenize the domain name
-    # into tld, sld and trd.
+    # A rule describes the composition of a domain name and explains how to tokenize
+    # the name into tld, sld and trd.
     #
-    # To use a rule, you first need to be sure the domain you want to tokenize
+    # To use a rule, you first need to be sure the name you want to tokenize
     # can be handled by the current rule.
     # You can use the <tt>#match?</tt> method.
     #
     #   rule = PublicSuffix::Rule.factory("com")
-    #   
+    #
     #   rule.match?("google.com")
     #   # => true
-    #   
+    #
     #   rule.match?("google.com")
     #   # => false
     #
-    # Rule order is significant. A domain can match more than one rule.
+    # Rule order is significant. A name can match more than one rule.
     # See the {Public Suffix Documentation}[http://publicsuffix.org/format/]
     # to learn more about rule priority.
     #
     # When you have the right rule, you can use it to tokenize the domain name.
-    # 
+    #
     #   rule = PublicSuffix::Rule.factory("com")
-    # 
+    #
     #   rule.decompose("google.com")
     #   # => ["google", "com"]
-    # 
+    #
     #   rule.decompose("www.google.com")
     #   # => ["www.google", "com"]
     #
@@ -107,132 +96,82 @@ module PublicSuffix
     #
     class Base
 
-      attr_reader :name, :value, :labels
+      # @return [String] the rule definition
+      attr_reader :value
+
+      # @return [Boolean] true if the rule is a private domain
+      attr_reader :private
+
 
       # Initializes a new rule with name and value.
       # If value is +nil+, name also becomes the value for this rule.
       #
-      # @param [String] name
-      #   The name of the rule
-      # @param [String] value
-      #   The value of the rule. If nil, defaults to +name+.
-      #
-      def initialize(name, value = nil)
-        @name   = name.to_s
-        @value  = value || @name
-        @labels = Domain.domain_to_labels(@value)
-      end
-
-      #
-      # The rule type name.
-      #
-      # @return [Symbol]
-      #
-      def self.type
-        @type ||= self.name.split("::").last.downcase.to_sym
-      end
-
-      #
-      # @see {type}
-      #
-      def type
-        self.class.type
+      # @param value [String] the value of the rule
+      def initialize(value, private: false)
+        @value    = value.to_s
+        @private  = private
       end
 
       # Checks whether this rule is equal to <tt>other</tt>.
       #
-      # @param [PublicSuffix::Rule::*] other
-      #   The rule to compare.
-      #
+      # @param  [PublicSuffix::Rule::*] other The rule to compare
       # @return [Boolean]
       #   Returns true if this rule and other are instances of the same class
       #   and has the same value, false otherwise.
       def ==(other)
-        return false unless other.is_a?(self.class)
-        self.equal?(other) ||
-        self.name == other.name
+        equal?(other) || (self.class == other.class && value == other.value)
       end
-      alias :eql? :==
+      alias eql? ==
 
-      # Checks if this rule matches +domain+.
+      # Checks if this rule matches +name+.
       #
-      # @param [String, #to_s] domain
-      #   The domain name to check.
+      # A domain name is said to match a rule if and only if
+      # all of the following conditions are met:
       #
-      # @return [Boolean]
+      # - When the domain and rule are split into corresponding labels,
+      #   that the domain contains as many or more labels than the rule.
+      # - Beginning with the right-most labels of both the domain and the rule,
+      #   and continuing for all labels in the rule, one finds that for every pair,
+      #   either they are identical, or that the label from the rule is "*".
+      #
+      # @see https://publicsuffix.org/list/
       #
       # @example
-      #   rule = Rule.factory("com")
-      #   # #<PublicSuffix::Rule::Normal>
-      #   rule.match?("example.com")
+      #   Rule.factory("com").match?("example.com")
       #   # => true
-      #   rule.match?("example.net")
+      #   Rule.factory("com").match?("example.net")
       #   # => false
       #
-      def match?(domain)
-        l1 = labels
-        l2 = Domain.domain_to_labels(domain)
-        odiff(l1, l2).empty?
-      end
-
-      # Checks if this rule allows +domain+.
-      #
-      # @param [String, #to_s] domain
-      #   The domain name to check.
-      #
+      # @param  name [String, #to_s] The domain name to check.
       # @return [Boolean]
-      #
-      # @example
-      #   rule = Rule.factory("*.do")
-      #   # => #<PublicSuffix::Rule::Wildcard>
-      #   rule.allow?("example.do")
-      #   # => false
-      #   rule.allow?("www.example.do")
-      #   # => true
-      #
-      def allow?(domain)
-        !decompose(domain).last.nil?
+      def match?(name)
+        # Note: it works because of the assumption there are no
+        # rules like foo.*.com. If the assumption is incorrect,
+        # we need to properly walk the input and skip parts according
+        # to wildcard component.
+        diff = name.chomp(value)
+        diff.empty? || diff[-1] == "."
       end
 
-      # Gets the length of this rule for comparison.
-      # The length usually matches the number of rule +parts+.
-      #
-      # Subclasses might actually override this method.
-      #
-      # @return [Integer] The number of parts.
-      def length
-        parts.length
-      end
-
-      #
-      # @raise  [NotImplementedError]
       # @abstract
       def parts
-        raise(NotImplementedError,"#{self.class}##{__method__} is not implemented")
+        raise NotImplementedError
       end
 
-      #
-      # @param [String, #to_s] domain
-      #   The domain name to decompose.
-      #
-      # @return [Array<String, nil>]
-      #
-      # @raise  [NotImplementedError]
       # @abstract
-      def decompose(domain)
-        raise(NotImplementedError,"#{self.class}##{__method__} is not implemented")
+      def length
+        raise NotImplementedError
       end
 
-      #
+      # Find the registered portion of a domain
       # @param [String, #to_s] domain
       #   The domain string from which to extract the registered part
-      # "- The public suffix is the set of labels from the domain which match the labels of 
+      # "- The public suffix is the set of labels from the domain which match the labels of
       #    the prevailing rule, using the matching algorithm above.
       #  - The registered or registrable domain is the public suffix plus one additional label."
       #  https://publicsuffix.org/list/
       #
       # @return [String] registered part of domain
-      #
       def registered_domain(domain)
         reg_dom_len = parts.length
         whole_parts = domain.split('.')
@@ -244,29 +183,54 @@ module PublicSuffix
         registered_parts.join('.')
       end
 
-      private
-
+      # Find the suffix of one that does not match two, comparison by ==
+      # @param [Array] one
+      # @param [Array] two may be longer or shorter than one
+      # @return [Array] suffix of one that does not match two
       def odiff(one, two)
         ii = 0
 
-        while(ii < one.size && one[ii] == two[ii])
+        while(ii < one.size && ii < two.size && one[ii] == two[ii])
           ii += 1
         end
 
         one[ii..one.length]
       end
 
+      # @abstract
+      # @param  [String, #to_s] name The domain name to decompose
+      # @return [Array<String, nil>]
+      def decompose(*)
+        raise NotImplementedError
+      end
+
     end
 
+    # Normal represents a standard rule (e.g. com).
     class Normal < Base
 
-      # Initializes a new rule with +name+.
+      # Initializes a new rule from +definition+.
       #
-      # @param [String] name
-      #   The name of this rule.
+      # @param definition [String] the rule as defined in the PSL
+      def initialize(definition, **options)
+        super(definition, **options)
+      end
+
+      # Gets the original rule definition.
       #
-      def initialize(name)
-        super(name, name)
+      # @return [String] The rule definition.
+      def rule
+        value
+      end
+
+      # Decomposes the domain name according to rule properties.
+      #
+      # @param  [String, #to_s] name The domain name to decompose
+      # @return [Array<String>] The array with [trd + sld, tld].
+      def decompose(domain)
+        suffix = parts.join('\.')
+        matches = domain.to_s.match(/^(.*)\.(#{suffix})$/)
+        matches ? matches[1..2] : [nil, nil]
       end
 
       # dot-split rule value and returns all rule parts
@@ -274,33 +238,47 @@ module PublicSuffix
       #
       # @return [Array<String>]
       def parts
-        @parts ||= @value.split(".")
+        @value.split(DOT)
       end
 
-      # Decomposes the domain according to rule properties.
+      # Gets the length of this rule for comparison,
+      # represented by the number of dot-separated parts in the rule.
       #
-      # @param [String, #to_s] domain
-      #   The domain name to decompose.
-      #
-      # @return [Array<String>]
-      #   The array with [trd + sld, tld].
-      #
-      def decompose(domain)
-        domain.to_s.chomp(".") =~ /^(.*)\.(#{parts.join('\.')})$/
-        [$1, $2]
+      # @return [Integer] The length of the rule.
+      def length
+        @length ||= parts.length
       end
 
     end
 
+    # Wildcard represents a wildcard rule (e.g. *.co.uk).
     class Wildcard < Base
 
-      # Initializes a new rule with +name+.
+      # Initializes a new rule from +definition+.
       #
-      # @param [String] name
-      #   The name of this rule.
+      # The wildcard "*" is removed from the value, as it's common
+      # for each wildcard rule.
       #
-      def initialize(name)
-        super(name, name.to_s[2..-1])
+      # @param definition [String] the rule as defined in the PSL
+      def initialize(definition, **options)
+        super(definition.to_s[2..-1], **options)
+      end
+
+      # Gets the original rule definition.
+      #
+      # @return [String] The rule definition.
+      def rule
+        value == "" ? STAR : STAR + DOT + value
+      end
+
+      # Decomposes the domain name according to rule properties.
+      #
+      # @param  [String, #to_s] name The domain name to decompose
+      # @return [Array<String>] The array with [trd + sld, tld].
+      def decompose(domain)
+        suffix = ([".*?"] + parts).join('\.')
+        matches = domain.to_s.match(/^(.*)\.(#{suffix})$/)
+        matches ? matches[1..2] : [nil, nil]
       end
 
       # dot-split rule value and returns all rule parts
@@ -308,40 +286,48 @@ module PublicSuffix
       #
       # @return [Array<String>]
       def parts
-        @parts ||= @value.split(".")
+        @value.split(DOT)
       end
 
-      # Overwrites the default implementation to cope with
-      # the +*+ char.
+      # Gets the length of this rule for comparison,
+      # represented by the number of dot-separated parts in the rule
+      # plus 1 for the *.
       #
-      # @return [Integer] The number of parts.
+      # @return [Integer] The length of the rule.
       def length
-        parts.length + 1 # * counts as 1
-      end
-
-      # Decomposes the domain according to rule properties.
-      #
-      # @param [String, #to_s] domain
-      #   The domain name to decompose.
-      #
-      # @return [Array<String>]
-      #   The array with [trd + sld, tld].
-      #
-      def decompose(domain)
-        domain.to_s.chomp(".") =~ /^(.*)\.(.*?\.#{parts.join('\.')})$/
-        [$1, $2]
+        @length ||= parts.length + 1 # * counts as 1
       end
 
     end
 
+    # Exception represents an exception rule (e.g. !parliament.uk).
     class Exception < Base
 
-      # Initializes a new rule with +name+.
+      # Initializes a new rule from +definition+.
       #
-      # @param  [String] name   The name of this rule.
+      # The bang ! is removed from the value, as it's common
+      # for each wildcard rule.
       #
-      def initialize(name)
-        super(name, name.to_s[1..-1])
+      # @param definition [String] the rule as defined in the PSL
+      def initialize(definition, **options)
+        super(definition.to_s[1..-1], **options)
+      end
+
+      # Gets the original rule definition.
+      #
+      # @return [String] The rule definition.
+      def rule
+        BANG + value
+      end
+
+      # Decomposes the domain name according to rule properties.
+      #
+      # @param  [String, #to_s] name The domain name to decompose
+      # @return [Array<String>] The array with [trd + sld, tld].
+      def decompose(domain)
+        suffix = parts.join('\.')
+        matches = domain.to_s.match(/^(.*)\.(#{suffix})$/)
+        matches ? matches[1..2] : [nil, nil]
       end
 
       # dot-split rule value and returns all rule parts
@@ -350,41 +336,27 @@ module PublicSuffix
       #
       # See http://publicsuffix.org/format/:
       # If the prevailing rule is a exception rule,
-      # modify it by removing the leftmost label. 
+      # modify it by removing the leftmost label.
       #
       # @return [Array<String>]
       def parts
-        @parts ||= @value.split(".")[1..-1]
+        @value.split(DOT)[1..-1]
       end
 
-      # Decomposes the domain according to rule properties.
+      # Gets the length of this rule for comparison,
+      # represented by the number of dot-separated parts in the rule.
       #
-      # @param [String, #to_s] domain
-      #   The domain name to decompose.
-      #
-      # @return [Array<String>]
-      #   The array with [trd + sld, tld].
-      #
-      def decompose(domain)
-        domain.to_s.chomp(".") =~ /^(.*)\.(#{parts.join('\.')})$/
-        [$1, $2]
+      # @return [Integer] The length of the rule.
+      def length
+        @length ||= parts.length
       end
 
     end
 
-    RULES = {
-      '*' => Wildcard,
-      '!' => Exception
-    }
-    RULES.default = Normal
 
     # Takes the +name+ of the rule, detects the specific rule class
     # and creates a new instance of that class.
     # The +name+ becomes the rule +value+.
-    #
-    # @param  [String] name The rule definition.
-    #
-    # @return [PublicSuffix::Rule::*] A rule instance.
     #
     # @example Creates a Normal rule
     #   PublicSuffix::Rule.factory("ar")
@@ -398,8 +370,28 @@ module PublicSuffix
     #   PublicSuffix::Rule.factory("!congresodelalengua3.ar")
     #   # => #<PublicSuffix::Rule::Exception>
     #
-    def self.factory(name)
-      RULES[name.to_s[0,1]].new(name)
+    # @param  [String] content The rule content.
+    # @return [PublicSuffix::Rule::*] A rule instance.
+    def self.factory(content, **options)
+      case content.to_s[0, 1]
+      when STAR
+        Wildcard
+      when BANG
+        Exception
+      else
+        Normal
+      end.new(content, **options)
+    end
+
+    # The default rule to use if no rule match.
+    #
+    # The default rule is "*". From https://publicsuffix.org/list/:
+    #
+    # > If no rules match, the prevailing rule is "*".
+    #
+    # @return [PublicSuffix::Rule::Wildcard] The default rule.
+    def self.default
+      factory(STAR)
     end
 
   end

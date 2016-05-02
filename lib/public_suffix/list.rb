@@ -1,11 +1,9 @@
-require 'net/http'
-#
-# Public Suffix
+# = Public Suffix
 #
 # Domain name parser based on the Public Suffix List.
 #
-# Copyright (c) 2009-2015 Simone Carletti <weppos@weppos.net>
-#
+# Copyright (c) 2009-2016 Simone Carletti <weppos@weppos.net>
+require 'net/http'
 
 module PublicSuffix
 
@@ -43,18 +41,16 @@ module PublicSuffix
   class List
     include Enumerable
 
-    class << self
-      attr_writer :default_definition
-    end
+    DEFAULT_LIST_PATH = File.join(File.dirname(__FILE__), "..", "..", "data", "list.txt")
 
     # Gets the default rule list.
+    #
     # Initializes a new {PublicSuffix::List} parsing the content
-    # of {PublicSuffix::List.default_definition}, if required.
+    # of {PublicSuffix::List.default_list_content}, if required.
     #
     # @return [PublicSuffix::List]
-    def self.default
       @default = nil if self.list_expired?
-      @default ||= parse(default_definition)
+      @default ||= parse(default_definition, options)
     end
 
     # Sets the default rule list to +value+.
@@ -65,25 +61,6 @@ module PublicSuffix
     # @return [PublicSuffix::List]
     def self.default=(value)
       @default = value
-    end
-
-    # Shows if support for private (non-ICANN) domains is enabled or not
-    #
-    # @return [Boolean]
-    def self.private_domains?
-      @private_domains != false
-    end
-
-    # Enables/disables support for private (non-ICANN) domains
-    # Implicitly reloads the list
-    #
-    # @param [Boolean] value
-    #   enable/disable support
-    #
-    # @return [PublicSuffix::List]
-    def self.private_domains=(value)
-      @private_domains = !!value
-      self.clear
     end
 
     # Sets the default rule list to +nil+.
@@ -102,9 +79,6 @@ module PublicSuffix
       self.clear.default
     end
 
-    DEFAULT_DEFINITION_PATH = File.join(Dir.tmpdir, 'public_suffix_definitions.txt')
-    TTL = 604800 # 1 week
-
     # Gets the default definition list.
     # Can be any <tt>IOStream</tt> including a <tt>File</tt>
     # or a simple <tt>String</tt>.
@@ -115,7 +89,7 @@ module PublicSuffix
       if self.list_expired?
         self.update_suffix_list
       end
-      @default_definition || File.new(DEFAULT_DEFINITION_PATH, "r:utf-8")
+      @default_definition || File.new(DEFAULT_LIST_PATH, "r:utf-8")
     end
 
     def self.update_suffix_list
@@ -124,85 +98,101 @@ module PublicSuffix
         request = Net::HTTP::Get.new uri.request_uri
         http.request request
       end.body
-      File.open(DEFAULT_DEFINITION_PATH, "w") do |f|
+      File.open(DEFAULT_LIST_PATH, "w") do |f|
         f.write list.force_encoding(Encoding::UTF_8)
       end
     end
-    
+
+    TTL = 604800 # 1 week
     def self.list_expired?
-      if File.exist?(DEFAULT_DEFINITION_PATH)
-        (Time.now - File.mtime(DEFAULT_DEFINITION_PATH)) > TTL
+      if File.exist?(DEFAULT_LIST_PATH)
+        (Time.now - File.mtime(DEFAULT_LIST_PATH)) > TTL
       else
-        self.update_suffix_list
-        false
+        true
       end
     end
 
+    # rubocop:disable Metrics/MethodLength
     # Parse given +input+ treating the content as Public Suffix List.
     #
     # See http://publicsuffix.org/format/ for more details about input format.
     #
-    # @param [String] input The rule list to parse.
-    #
+    # @param  string [#each_line] The list to parse.
+    # @param  private_domain [Boolean] whether to ignore the private domains section.
     # @return [Array<PublicSuffix::Rule::*>]
-    def self.parse(input)
+    def self.parse(input, private_domains: true)
+      comment_token = "//".freeze
+      private_token = "===BEGIN PRIVATE DOMAINS===".freeze
+      section = nil # 1 == ICANN, 2 == PRIVATE
+
       new do |list|
         input.each_line do |line|
           line.strip!
-          break if !private_domains? && line.include?('===BEGIN PRIVATE DOMAINS===')
-          # strip blank lines
-          if line.empty?
+          case
+
+          # skip blank lines
+          when line.empty?
             next
-          # strip comments
-          elsif line =~ %r{^//}
+
+          # include private domains or stop scanner
+          when line.include?(private_token)
+            break if !private_domains
+            section = 2
+
+          # skip comments
+          when line.start_with?(comment_token)
             next
-          # append rule
+
           else
-            list.add(Rule.factory(line), false)
+            list.add(Rule.factory(line, private: section == 2), reindex: false)
+
           end
         end
       end
     end
+    # rubocop:enable Metrics/MethodLength
+
 
     # Gets the array of rules.
     #
     # @return [Array<PublicSuffix::Rule::*>]
     attr_reader :rules
 
-    # Gets the naive index, a hash that with the keys being the first label of
-    # every rule pointing to an array of integers (indexes of the rules in @rules).
-    #
-    # @return [Array]
-    attr_reader :indexes
 
     # Initializes an empty {PublicSuffix::List}.
     #
     # @yield [self] Yields on self.
     # @yieldparam [PublicSuffix::List] self The newly created instance.
     #
-    def initialize(&block)
-      @rules   = []
-      @indexes = {}
+    def initialize
+      @rules = []
       yield(self) if block_given?
-      create_index!
+      reindex!
     end
+
 
     # Creates a naive index for +@rules+. Just a hash that will tell
     # us where the elements of +@rules+ are relative to its first
     # {PublicSuffix::Rule::Base#labels} element.
     #
     # For instance if @rules[5] and @rules[4] are the only elements of the list
-    # where Rule#labels.first is 'us' @indexes['us'] #=> [5,4], that way in 
+    # where Rule#labels.first is 'us' @indexes['us'] #=> [5,4], that way in
     # select we can avoid mapping every single rule against the candidate domain.
-    def create_index!
-      @rules.map { |l| l.labels.first }.each_with_index do |elm, inx|
-        if !@indexes.has_key?(elm)
-          @indexes[elm] = [inx]
-        else
-          @indexes[elm] << inx
-        end
+    def reindex!
+      @indexes = {}
+      @rules.each_with_index do |rule, index|
+        tld = Domain.name_to_labels(rule.value).last
+        @indexes[tld] ||= []
+        @indexes[tld] << index
       end
     end
+
+    # Gets the naive index, a hash that with the keys being the first label of
+    # every rule pointing to an array of integers (indexes of the rules in @rules).
+    def indexes
+      @indexes.dup
+    end
+
 
     # Checks whether two lists are equal.
     #
@@ -216,39 +206,31 @@ module PublicSuffix
     # @return [Boolean]
     def ==(other)
       return false unless other.is_a?(List)
-      self.equal?(other) ||
-      self.rules == other.rules
+      equal?(other) || rules == other.rules
     end
-    alias :eql? :==
+    alias eql? ==
 
     # Iterates each rule in the list.
     def each(*args, &block)
       @rules.each(*args, &block)
     end
 
-    # Gets the list as array.
-    #
-    # @return [Array<PublicSuffix::Rule::*>]
-    def to_a
-      @rules
-    end
 
-    # Adds the given object to the list
-    # and optionally refreshes the rule index.
+    # Adds the given object to the list and optionally refreshes the rule index.
     #
     # @param [PublicSuffix::Rule::*] rule
     #   The rule to add to the list.
-    # @param [Boolean] index
+    # @param [Boolean] reindex
     #   Set to true to recreate the rule index
     #   after the rule has been added to the list.
     #
     # @return [self]
     #
-    # @see #create_index!
+    # @see #reindex!
     #
-    def add(rule, index = true)
+    def add(rule, reindex: true)
       @rules << rule
-      create_index! if index == true
+      reindex! if reindex
       self
     end
     alias << add
@@ -259,7 +241,6 @@ module PublicSuffix
     def size
       @rules.size
     end
-    alias length size
 
     # Checks whether the list is empty.
     #
@@ -273,54 +254,73 @@ module PublicSuffix
     # @return [self]
     def clear
       @rules.clear
+      reindex!
       self
     end
 
-    # Returns the most appropriate rule for domain.
+    # Finds and returns the most appropriate rule for the domain name.
     #
     # From the Public Suffix List documentation:
     #
-    # * If a hostname matches more than one rule in the file,
+    # - If a hostname matches more than one rule in the file,
     #   the longest matching rule (the one with the most levels) will be used.
-    # * An exclamation mark (!) at the start of a rule marks an exception to a previous wildcard rule.
+    # - An exclamation mark (!) at the start of a rule marks an exception to a previous wildcard rule.
     #   An exception rule takes priority over any other matching rule.
     #
-    # == Algorithm description
+    # ## Algorithm description
     #
-    # * Match domain against all rules and take note of the matching ones.
-    # * If no rules match, the prevailing rule is "*".
-    # * If more than one rule matches, the prevailing rule is the one which is an exception rule.
-    # * If there is no matching exception rule, the prevailing rule is the one with the most labels.
-    # * If the prevailing rule is a exception rule, modify it by removing the leftmost label.
-    # * The public suffix is the set of labels from the domain
-    #   which directly match the labels of the prevailing rule (joined by dots).
-    # * The registered domain is the public suffix plus one additional label.
+    # 1. Match domain against all rules and take note of the matching ones.
+    # 2. If no rules match, the prevailing rule is "*".
+    # 3. If more than one rule matches, the prevailing rule is the one which is an exception rule.
+    # 4. If there is no matching exception rule, the prevailing rule is the one with the most labels.
+    # 5. If the prevailing rule is a exception rule, modify it by removing the leftmost label.
+    # 6. The public suffix is the set of labels from the domain
+    #    which directly match the labels of the prevailing rule (joined by dots).
+    # 7. The registered domain is the public suffix plus one additional label.
     #
-    # @param  [String, #to_s] domain The domain name.
-    #
-    # @return [PublicSuffix::Rule::*, nil]
-    def find(domain)
-      rules = select(domain)
-      rules.detect { |r|   r.type == :exception } ||
-      rules.inject { |t,r| t.length > r.length ? t : r }
+    # @param  name [String, #to_s] The domain name.
+    # @param  [PublicSuffix::Rule::*] default The default rule to return in case no rule matches.
+    # @return [PublicSuffix::Rule::*]
+    def find(name, default: default_rule, **options)
+      rule = select(name, **options).inject do |l, r|
+        return r if r.class == Rule::Exception
+        l.length > r.length ? l : r
+      end
+      rule || default
     end
 
     # Selects all the rules matching given domain.
     #
-    # Will use +@indexes+ to try only the rules that share the same first label,
-    # that will speed up things when using +List.find('foo')+ a lot.
+    # Internally, the lookup heavily rely on the `@indexes`. The input is split into labels,
+    # and we retriever from the index only the rules that end with the input label. After that,
+    # a sequential scan is performed. In most cases, where the number of rules for the same label
+    # is limited, this algorithm is efficient enough.
     #
-    # @param  [String, #to_s] domain The domain name.
+    # If `ignore_private` is set to true, the algorithm will skip the rules that are flagged as private domain.
+    # Note that the rules will still be part of the loop. If you frequently need to access lists
+    # ignoring the private domains, you should create a list that doesn't include these domains setting the
+    # `private_domains: false` option when calling {.parse}.
     #
+    # @param  [String, #to_s] name The domain name.
+    # @param  [Boolean] ignore_private
     # @return [Array<PublicSuffix::Rule::*>]
-    def select(domain)
-      # raise DomainInvalid, "Blank domain"
-      return [] if domain.to_s =~ /\A\s*\z/
-      # raise DomainInvalid, "`#{domain}' is not expected to contain a scheme"
-      return [] if domain.include?("://")
+    def select(name, ignore_private: false)
+      name = name.to_s
+      indices = (@indexes[Domain.name_to_labels(name).last] || [])
 
-      indices = (@indexes[Domain.domain_to_labels(domain).first] || [])
-      @rules.values_at(*indices).select { |rule| rule.match?(domain) }
+      finder = @rules.values_at(*indices).lazy
+      finder = finder.select { |rule| rule.match?(name) }
+      finder = finder.select { |rule| !rule.private } if ignore_private
+      finder.to_a
+    end
+
+    # Gets the default rule.
+    #
+    # @see PublicSuffix::Rule.default_rule
+    #
+    # @return [PublicSuffix::Rule::*]
+    def default_rule
+      PublicSuffix::Rule.default
     end
 
   end

@@ -1,36 +1,32 @@
-#
-# Public Suffix
+# = Public Suffix
 #
 # Domain name parser based on the Public Suffix List.
 #
-# Copyright (c) 2009-2015 Simone Carletti <weppos@weppos.net>
-#
+# Copyright (c) 2009-2016 Simone Carletti <weppos@weppos.net>
 
 module PublicSuffix
 
+  # Domain represents a domain name, composed by a TLD, SLD and TRD.
   class Domain
 
-    # Splits a string into its possible labels
-    # as a domain in reverse order from the input string.
+    # Splits a string into the labels, that is the dot-separated parts.
     #
-    # The input is not validated, but it is assumed to be a valid domain.
-    #
-    # @param  [String, #to_s] domain
-    #   The domain name to split.
-    #
-    # @return [Array<String>]
+    # The input is not validated, but it is assumed to be a valid domain name.
     #
     # @example
     #
-    #   domain_to_labels('google.com')
-    #   # => ['com', 'google']
+    #   name_to_labels('example.com')
+    #   # => ['example', 'com']
     #
-    #   domain_to_labels('google.co.uk')
-    #   # => ['uk', 'co', 'google']
+    #   name_to_labels('example.co.uk')
+    #   # => ['example', 'co', 'uk']
     #
-    def self.domain_to_labels(domain)
-      domain.to_s.split(".").reverse
+    # @param  name [String, #to_s] The domain name to split.
+    # @return [Array<String>]
+    def self.name_to_labels(name)
+      name.to_s.split(DOT)
     end
+
 
     attr_reader :tld, :sld, :trd
 
@@ -64,7 +60,7 @@ module PublicSuffix
     #   PublicSuffix::Domain.new("com", "example", "wwww")
     #   # => #<PublicSuffix::Domain @tld="com", @trd=nil, @sld="example">
     #
-    def initialize(*args, &block)
+    def initialize(*args)
       @tld, @sld, @trd = args
       yield(self) if block_given?
     end
@@ -105,7 +101,7 @@ module PublicSuffix
     #   # => "www.google.com"
     #
     def name
-      [@trd, @sld, @tld].compact.join(".")
+      [@trd, @sld, @tld].compact.join(DOT)
     end
 
     # Returns a domain-like representation of this object
@@ -123,10 +119,6 @@ module PublicSuffix
     # This method doesn't validate the input. It handles the domain
     # as a valid domain name and simply applies the necessary transformations.
     #
-    #   # This is an invalid domain
-    #   PublicSuffix::Domain.new("qqq", "google").domain
-    #   # => "google.qqq"
-    #
     # This method returns a FQD, not just the domain part.
     # To get the domain part, use <tt>#sld</tt> (aka second level domain).
     #
@@ -136,18 +128,15 @@ module PublicSuffix
     #   PublicSuffix::Domain.new("com", "google", "www").sld
     #   # => "google"
     #
-    # @return [String]
-    #
     # @see #domain?
     # @see #subdomain
     #
+    # @return [String]
     def domain
-      if domain?
-        [@sld, @tld].join(".")
-      end
+      [@sld, @tld].join(DOT) if domain?
     end
 
-    # Returns a domain-like representation of this object
+    # Returns a subdomain-like representation of this object
     # if the object is a {#subdomain?}, <tt>nil</tt> otherwise.
     #
     #   PublicSuffix::Domain.new("com").subdomain
@@ -162,11 +151,7 @@ module PublicSuffix
     # This method doesn't validate the input. It handles the domain
     # as a valid domain name and simply applies the necessary transformations.
     #
-    #   # This is an invalid domain
-    #   PublicSuffix::Domain.new("qqq", "google", "www").subdomain
-    #   # => "www.google.qqq"
-    #
-    # This method returns a FQD, not just the domain part.
+    # This method returns a FQD, not just the subdomain part.
     # To get the subdomain part, use <tt>#trd</tt> (aka third level domain).
     #
     #   PublicSuffix::Domain.new("com", "google", "www").subdomain
@@ -175,25 +160,12 @@ module PublicSuffix
     #   PublicSuffix::Domain.new("com", "google", "www").trd
     #   # => "www"
     #
-    # @return [String]
-    #
     # @see #subdomain?
     # @see #domain
     #
+    # @return [String]
     def subdomain
-      if subdomain?
-        [@trd, @sld, @tld].join(".")
-      end
-    end
-
-    # Returns the rule matching this domain
-    # in the default {PublicSuffix::List}.
-    #
-    # @return [PublicSuffix::Rule::Base, nil]
-    #   The rule instance a rule matches current domain,
-    #   nil if no rule is found.
-    def rule
-      List.default.find(name)
+      [@trd, @sld, @tld].join(DOT) if subdomain?
     end
 
     # Checks whether <tt>self</tt> looks like a domain.
@@ -203,8 +175,6 @@ module PublicSuffix
     # a value for the {#tld} and {#sld} attributes.
     # If you also want to validate the domain,
     # use {#valid_domain?} instead.
-    #
-    # @return [Boolean]
     #
     # @example
     #
@@ -219,11 +189,12 @@ module PublicSuffix
     #
     #   # This is an invalid domain, but returns true
     #   # because this method doesn't validate the content.
-    #   PublicSuffix::Domain.new("qqq", "google").domain?
+    #   PublicSuffix::Domain.new("com", nil).domain?
     #   # => true
     #
     # @see #subdomain?
     #
+    # @return [Boolean]
     def domain?
       !(@tld.nil? || @sld.nil?)
     end
@@ -236,8 +207,6 @@ module PublicSuffix
     # If you also want to validate the domain,
     # use {#valid_subdomain?} instead.
     #
-    # @return [Boolean]
-    #
     # @example
     #
     #   PublicSuffix::Domain.new("com").subdomain?
@@ -251,113 +220,14 @@ module PublicSuffix
     #
     #   # This is an invalid domain, but returns true
     #   # because this method doesn't validate the content.
-    #   PublicSuffix::Domain.new("qqq", "google", "www").subdomain?
+    #   PublicSuffix::Domain.new("com", "example", nil).subdomain?
     #   # => true
     #
     # @see #domain?
     #
+    # @return [Boolean]
     def subdomain?
       !(@tld.nil? || @sld.nil? || @trd.nil?)
-    end
-
-    # Checks whether <tt>self</tt> is exclusively a domain,
-    # and not a subdomain.
-    #
-    # @return [Boolean]
-    def is_a_domain?
-      domain? && !subdomain?
-    end
-
-    # Checks whether <tt>self</tt> is exclusively a subdomain.
-    #
-    # @return [Boolean]
-    def is_a_subdomain?
-      subdomain?
-    end
-
-    # Checks whether <tt>self</tt> is assigned and allowed
-    # according to default {List}.
-    #
-    # This method triggers a new rule lookup in the default {List},
-    # which is a quite intensive task.
-    #
-    # @return [Boolean]
-    #
-    # @example Check a valid domain
-    #   Domain.new("com", "example").valid?
-    #   # => true
-    #
-    # @example Check a valid subdomain
-    #   Domain.new("com", "example", "www").valid?
-    #   # => true
-    #
-    # @example Check a not-assigned domain
-    #   Domain.new("qqq", "example").valid?
-    #   # => false
-    #
-    # @example Check a not-allowed domain
-    #   Domain.new("do", "example").valid?
-    #   # => false
-    #   Domain.new("do", "example", "www").valid?
-    #   # => true
-    #
-    def valid?
-      r = rule
-      !r.nil? && r.allow?(name)
-    end
-
-    # Checks whether <tt>self</tt> looks like a domain and validates
-    # according to default {List}.
-    #
-    # @return [Boolean]
-    #
-    # @example
-    #
-    #   PublicSuffix::Domain.new("com").domain?
-    #   # => false
-    #
-    #   PublicSuffix::Domain.new("com", "google").domain?
-    #   # => true
-    #
-    #   PublicSuffix::Domain.new("com", "google", "www").domain?
-    #   # => true
-    #
-    #   # This is an invalid domain
-    #   PublicSuffix::Domain.new("qqq", "google").false?
-    #   # => true
-    #
-    # @see #domain?
-    # @see #valid?
-    #
-    def valid_domain?
-      domain? && valid?
-    end
-
-    # Checks whether <tt>self</tt> looks like a subdomain and validates
-    # according to default {List}.
-    #
-    # @return [Boolean]
-    #
-    # @example
-    #
-    #   PublicSuffix::Domain.new("com").subdomain?
-    #   # => false
-    #
-    #   PublicSuffix::Domain.new("com", "google").subdomain?
-    #   # => false
-    #
-    #   PublicSuffix::Domain.new("com", "google", "www").subdomain?
-    #   # => true
-    #
-    #   # This is an invalid domain
-    #   PublicSuffix::Domain.new("qqq", "google", "www").subdomain?
-    #   # => false
-    #
-    # @see #subdomain?
-    # @see #valid?
-    #
-    def valid_subdomain?
-      subdomain? && valid?
     end
 
   end

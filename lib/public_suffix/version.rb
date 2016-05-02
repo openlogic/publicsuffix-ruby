@@ -3,20 +3,19 @@
 #
 # Domain name parser based on the Public Suffix List.
 #
-# Copyright (c) 2009-2015 Simone Carletti <weppos@weppos.net>
+# Copyright (c) 2009-2016 Simone Carletti <weppos@weppos.net>
 #
 
 module PublicSuffix
-
   module Version
-    MAJOR = 1
-    MINOR = 5
-    PATCH = 1
-    BUILD = 5
+    MAJOR = 2
+    MINOR = 0
+    PATCH = 0
+    BUILD = 0
 
     STRING = [MAJOR, MINOR, PATCH, BUILD].compact.join(".")
   end
 
-  VERSION = Version::STRING
-
+  # The current library version.
+  VERSION = Version::STRING.freeze
 end
