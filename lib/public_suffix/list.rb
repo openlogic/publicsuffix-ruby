@@ -49,7 +49,7 @@ module PublicSuffix
     # of {PublicSuffix::List.default_list_content}, if required.
     #
     # @return [PublicSuffix::List]
-      @default = nil if self.list_expired?
+    def self.default(**options)
       @default ||= parse(default_definition, options)
     end
 
@@ -92,12 +92,18 @@ module PublicSuffix
       @default_definition || File.new(DEFAULT_LIST_PATH, "r:utf-8")
     end
 
+    # Retrieve the latest public suffix list from
+    # https://publicsuffix.org/list/public_suffix_list.dat
+    # Replaces the file at DEFAULT_LIST_PATH
     def self.update_suffix_list
       uri = URI('https://publicsuffix.org/list/public_suffix_list.dat')
-      list = Net::HTTP.start uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE do |http|
+      response = Net::HTTP.start(uri.host, uri.port,
+          use_ssl: uri.scheme == 'https',
+          verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
         request = Net::HTTP::Get.new uri.request_uri
         http.request request
-      end.body
+      end
+      list = response.body
       File.open(DEFAULT_LIST_PATH, "w") do |f|
         f.write list.force_encoding(Encoding::UTF_8)
       end
