@@ -1,5 +1,6 @@
 # -*- encoding: utf-8 -*-
 # stub: public_suffix 1.5.3 ruby lib
+require_relative 'lib/public_suffix/version'
 
 Gem::Specification.new do |s|
   s.name = "public_suffix"
