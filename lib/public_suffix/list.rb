@@ -4,6 +4,7 @@
 #
 # Copyright (c) 2009-2016 Simone Carletti <weppos@weppos.net>
 require 'net/http'
+require 'tmpdir'
 
 module PublicSuffix
 
@@ -41,7 +42,9 @@ module PublicSuffix
   class List
     include Enumerable
 
-    DEFAULT_LIST_PATH = File.join(File.dirname(__FILE__), "..", "..", "data", "list.txt")
+    # This needs to be writeable by the effective user of the running process
+    # Therefore we put it in the system temp directory
+    DEFAULT_LIST_PATH = File.join(Dir.tmpdir, 'public_suffix_definitions.txt')
 
     # Gets the default rule list.
     #
