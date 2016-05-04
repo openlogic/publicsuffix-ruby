@@ -163,26 +163,6 @@ module PublicSuffix
         raise NotImplementedError
       end
 
-      # Find the registered portion of a domain
-      # @param [String, #to_s] domain
-      #   The domain string from which to extract the registered part
-      # "- The public suffix is the set of labels from the domain which match the labels of
-      #    the prevailing rule, using the matching algorithm above.
-      #  - The registered or registrable domain is the public suffix plus one additional label."
-      #  https://publicsuffix.org/list/
-      #
-      # @return [String] registered part of domain
-      def registered_domain(domain)
-        reg_dom_len = parts.length
-        whole_parts = domain.split('.')
-        if (reg_dom_len < whole_parts.length)
-          registered_parts = whole_parts.pop(reg_dom_len + 1)
-        else
-          registered_parts = whole_parts
-        end
-        registered_parts.join('.')
-      end
-
       # Find the suffix of one that does not match two, comparison by ==
       # @param [Array] one
       # @param [Array] two may be longer or shorter than one
