@@ -1,12 +1,12 @@
-require 'rubygems'
-require 'bundler'
+require "rubygems"
+require "bundler"
 
-$:.unshift(File.dirname(__FILE__) + "/lib")
-require 'public_suffix'
+$LOAD_PATH.unshift(File.dirname(__FILE__) + "/lib")
+require "public_suffix"
 
 
-# Run test by default.
-task :default => :test
+# By default, run tests and linter.
+task default: [:test, :rubocop]
 
 spec = Gem::Specification.new do |s|
   s.name              = "public_suffix"
@@ -16,7 +16,7 @@ spec = Gem::Specification.new do |s|
 
   s.author            = "Simone Carletti"
   s.email             = "weppos@weppos.net"
-  s.homepage          = "http://simonecarletti.com/code/publicsuffix"
+  s.homepage          = "https://simonecarletti.com/code/publicsuffix-ruby"
   s.license           = "MIT"
 
   s.files             = `git ls-files`.split("\n")
@@ -29,7 +29,7 @@ spec = Gem::Specification.new do |s|
 end
 
 
-require 'rubygems/package_task'
+require "rubygems/package_task"
 
 Gem::PackageTask.new(spec) do |pkg|
   pkg.gem_spec = spec
@@ -38,7 +38,7 @@ end
 desc "Build the gemspec file #{spec.name}.gemspec"
 task :gemspec do
   file = File.dirname(__FILE__) + "/#{spec.name}.gemspec"
-  File.open(file, "w") {|f| f << spec.to_ruby }
+  File.open(file, "w") { |f| f << spec.to_ruby }
 end
 
 desc "Remove any temporary products, including gemspec"
@@ -53,18 +53,22 @@ desc "Package the library and generates the gemspec"
 task package: [:gemspec]
 
 
-require 'rake/testtask'
+require "rake/testtask"
 
 Rake::TestTask.new do |t|
-  t.libs << "test"
+  t.libs = %w( lib test )
   t.pattern = "test/**/*_test.rb"
-  t.verbose = !!ENV["VERBOSE"]
-  t.warning = !!ENV["WARNING"]
+  t.verbose = !ENV["VERBOSE"].nil?
+  t.warning = !ENV["WARNING"].nil?
 end
 
+require "rubocop/rake_task"
 
-require 'yard'
-require 'yard/rake/yardoc_task'
+RuboCop::RakeTask.new
+
+
+require "yard"
+require "yard/rake/yardoc_task"
 
 YARD::Rake::YardocTask.new(:yardoc) do |y|
   y.options = %w( --output-dir yardoc )
@@ -75,8 +79,7 @@ namespace :yardoc do
     rm_r "yardoc" rescue nil
   end
 end
-
-task clobber: "yardoc:clobber"
+task clobber: ["yardoc:clobber"]
 
 
 desc "Open an irb session preloaded with this library"
@@ -86,12 +89,12 @@ end
 
 
 desc "Downloads the Public Suffix List file from the repository and stores it locally."
-task :upddef do
+task :"update-list" do
   require "net/http"
 
-  DEFINITION_URL = "https://publicsuffix.org/list/effective_tld_names.dat"
+  DEFINITION_URL = PublicSuffix::List::DEFAULT_LIST_URI.freeze
 
-  File.open("data/definitions.txt", "w+") do |f|
+  File.open(PublicSuffix::List::DEFAULT_LIST_PATH, "w+") do |f|
     response = Net::HTTP.get_response(URI.parse(DEFINITION_URL))
     response.body
     f.write(response.body)

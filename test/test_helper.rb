@@ -1,9 +1,16 @@
-require 'rubygems'
-require 'minitest/autorun'
-require 'mocha/setup'
+if ENV["COVERALL"]
+  require "coveralls"
+  Coveralls.wear!
+end
 
-$:.unshift File.expand_path('../../lib', __FILE__)
-require 'public_suffix'
+require "minitest/autorun"
+require "minitest/reporters"
+require "mocha/setup"
+
+Minitest::Reporters.use! Minitest::Reporters::DefaultReporter.new(color: true)
+
+$LOAD_PATH.unshift File.expand_path("../../lib", __FILE__)
+require "public_suffix"
 
 Minitest::Unit::TestCase.class_eval do
   def assert_not_equal(exp, act, msg = nil)
