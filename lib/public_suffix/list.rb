@@ -45,6 +45,7 @@ module PublicSuffix
     # This needs to be writeable by the effective user of the running process
     # Therefore we put it in the system temp directory
     DEFAULT_LIST_PATH = File.join(Dir.tmpdir, 'public_suffix_definitions.txt')
+    DEFAULT_LIST_URI  = 'https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat'
 
     # Gets the default rule list.
     #
@@ -99,7 +100,7 @@ module PublicSuffix
     # https://publicsuffix.org/list/public_suffix_list.dat
     # Replaces the file at DEFAULT_LIST_PATH
     def self.update_suffix_list
-      uri = URI('https://publicsuffix.org/list/public_suffix_list.dat')
+      uri = URI(DEFAULT_LIST_URI)
       response = Net::HTTP.start(uri.host, uri.port,
           use_ssl: uri.scheme == 'https',
           verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
