@@ -29,8 +29,9 @@ class PslTest < Minitest::Unit::TestCase
 
   def test_valid
     # Parse the PSL and run the tests
-    puts PublicSuffix::List::DEFAULT_LIST_PATH
-    PublicSuffix::List.default_definition # This reads and sets the PublicSuffix::List.default definition, but checks to see if the file exists or not and updates it otherwise...needed as the file doesn't exist in the /tmp location by default
+    # This reads and sets the PublicSuffix::List.default definition, but checks to see if the file exists or not
+    # and updates it otherwise...needed as the file doesn't exist in the /tmp location by default
+    PublicSuffix::List.default_definition
 
     failures = []
     self.class.tests.each do |input, output|
