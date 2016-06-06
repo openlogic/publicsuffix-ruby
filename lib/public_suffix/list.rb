@@ -1,5 +1,5 @@
 require 'net/http'
-require 'tempdir'
+require 'tmpdir'
 #
 # Public Suffix
 #
