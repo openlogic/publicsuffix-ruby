@@ -1,6 +1,7 @@
 require 'rubygems'
 require 'minitest/autorun'
 require 'mocha/setup'
+require 'webmock/minitest'
 
 $:.unshift File.expand_path('../../lib', __FILE__)
 require 'public_suffix'
@@ -10,3 +11,5 @@ Minitest::Unit::TestCase.class_eval do
     assert_operator(exp, :!=, act, msg)
   end unless method_exists?(:assert_not_equal)
 end
+
+WebMock.allow_net_connect!

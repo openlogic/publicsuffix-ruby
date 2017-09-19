@@ -1,4 +1,5 @@
 require 'net/http'
+require 'openssl'
 require 'tmpdir'
 #
 # Public Suffix
@@ -113,30 +114,33 @@ module PublicSuffix
     #
     # @return [File]
     def self.default_definition
+      unless File.size? DEFAULT_DEFINITION_PATH
+        FileUtils.cp File.expand_path("../../data/public_suffix_list.dat", __dir__), DEFAULT_DEFINITION_PATH
+      end
+
       if self.list_expired?
         self.update_suffix_list
       end
-      @default_definition || File.new(DEFAULT_DEFINITION_PATH, "r:utf-8")
+
+      @default_definition || File.open(DEFAULT_DEFINITION_PATH, "r:utf-8")
     end
 
     def self.update_suffix_list
       uri = URI('https://publicsuffix.org/list/public_suffix_list.dat')
-      list = Net::HTTP.start uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE do |http|
+      Net::HTTP.start uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE do |http|
         request = Net::HTTP::Get.new uri.request_uri
-        http.request request
-      end.body
-      File.open(DEFAULT_DEFINITION_PATH, "w") do |f|
-        f.write list.force_encoding(Encoding::UTF_8)
+        response = http.request request
+        case response
+        when Net::HTTPSuccess
+          File.open(DEFAULT_DEFINITION_PATH, 'w') do |f|
+            f.write response.body.force_encoding(Encoding::UTF_8)
+          end
+        end
       end
     end
-    
+
     def self.list_expired?
-      if File.exist?(DEFAULT_DEFINITION_PATH)
-        (Time.now - File.mtime(DEFAULT_DEFINITION_PATH)) > TTL
-      else
-        self.update_suffix_list
-        false
-      end
+      File.size?(DEFAULT_DEFINITION_PATH).nil? || (Time.now - File.mtime(DEFAULT_DEFINITION_PATH)) > TTL
     end
 
     # Parse given +input+ treating the content as Public Suffix List.

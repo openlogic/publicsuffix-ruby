@@ -160,6 +160,27 @@ EOS
     assert_equal PublicSuffix::Rule.factory("com"), list.find("google.com")
   end
 
+  def test_update_suffix_list_when_http_get_fails
+    stub_request(:get, 'https://publicsuffix.org/list/public_suffix_list.dat').to_return(status: 404)
+    File.open(PublicSuffix::List::DEFAULT_DEFINITION_PATH, 'w') do |file|
+      file.puts "foo bar"
+    end
+    PublicSuffix::List.update_suffix_list
+    assert_equal "foo bar\n", PublicSuffix::List.default_definition.read
+  end
+
+  def test_update_suffix_list_when_http_get_succeeds
+    stub_request(:get, 'https://publicsuffix.org/list/public_suffix_list.dat').to_return(status: 200, body: File.open(File.expand_path('../../data/public_suffix_list.dat', __dir__)))
+    File.open(PublicSuffix::List::DEFAULT_DEFINITION_PATH, 'w') do |file|
+      file.puts "foo bar"
+    end
+    PublicSuffix::List.update_suffix_list
+    updated_list = PublicSuffix::List.default_definition.read
+    assert_match '===BEGIN ICANN DOMAINS===', updated_list
+    assert_match '===END ICANN DOMAINS===', updated_list
+    assert_match '===BEGIN PRIVATE DOMAINS===', updated_list
+    assert_match '===END PRIVATE DOMAINS===', updated_list
+  end
 
 private
 
